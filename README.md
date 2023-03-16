@@ -34,4 +34,4 @@ size 3 flat-top:
 In pure text I think flat-top looks better.
 ```
 方向編號：10：1、01：2、11：3  
-現在以數字輸出，以後可能
+現在以數字輸出，以後再做UI

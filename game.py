@@ -27,6 +27,8 @@ class Position:
         return Position(self.x - other.x, self.y - other.y)
 
     def __eq__(self, other):
+        if other == None:
+            return False
         return self.x == other.x and self.y == other.y
 
     def getDirection(self, other):
@@ -51,21 +53,20 @@ class Position:
 outputHelper = OutputHelper()
 
 
-class Board:
-    def __init__(self, size, board=None, player=1):
+class HexBoard:
+    def __init__(self, size, winLen, board=None, initPlayer=1):
         self.size = size  # length of each side of the board
+        self.winLen = winLen  # number of pieces in a row to win
         self.board = board or self.createBoard()
         # board slot value:
         # -1: invalid position
         # 0: empty
-        # 1: player 1, direction 1
-        # 2: player 1, direction 2
-        # 3: player 1, direction 3
-        # 4: player 2, direction 1
-        # 5: player 2, direction 2
-        # 6: player 2, direction 3
-        self.player = player
+        # 1: player 1
+        # 2: player 2
+        self.player = initPlayer
         self.lastPosition = None
+        self.lastDirection = None
+        self.result = None
 
     def createBoard(
         self,
@@ -79,16 +80,31 @@ class Board:
 
     def isValid(self, position, direction):
         # check position
-        if self.board[position.x][position.y] != 0:
-            return False
+        if (
+            position.x > self.size * 2 - 1
+            or position.y > self.size * 2 - 1
+            or position.x < 0
+            or position.y < 0
+        ):
+            return False, "out of board"
+        if self.board[position.x][position.y] == -1:
+            return False, "out of board"
+        if self.board[position.x][position.y] > 0:
+            return False, "position occupied"
         # check direction
+        if direction > 3 or direction < 1:
+            return False, "invalid direction"
         if self.lastPosition is None:
-            return True
-        return self.lastPosition.getDirection(position) == direction
+            return True, None
+        inSameLine = self.lastPosition.getDirection(position) == self.lastDirection
+        if not inSameLine:
+            return False, "not in the given direction"
+        return True, None
 
     def play(self, player, position, direction):
-        if not self.isValid(position, direction):
-            return False
+        valid, errorMessage = self.isValid(position, direction)
+        if not valid:
+            raise ValueError(errorMessage)
         if self.board[position.x][position.y] > 0:
             raise ValueError(
                 f"Board:\n{self}\nPosition is {position} already occupied."
@@ -96,8 +112,9 @@ class Board:
         if self.board[position.x][position.y] == -1:
             raise ValueError(f"Position {position} is invalid.")
 
-        self.board[position.x][position.y] = (player - 1) * 3 + direction
+        self.board[position.x][position.y] = player
         self.lastPosition = position
+        self.lastDirection = direction
         self.player = 3 - self.player
         return True
 
@@ -105,18 +122,92 @@ class Board:
         while True:
             try:
                 print(self)
-                position = Position(*map(int, input("Position: ").split()))
-                direction = int(input("Direction: "))
+                x, y, direction = map(
+                    int, input("Position and direction(x y d): ").split()
+                )
+                position = Position(x, y)
                 done = self.play(self.player, position, direction)
                 while not done:
                     print("Invalid move, please try again.")
-                    position = Position(*map(int, input("Position: ").split()))
-                    direction = int(input("Direction: "))
+                    x, y, direction = map(
+                        int, input("Position and direction(x y d): ").split()
+                    )
+                    position = Position(x, y)
                     done = self.play(self.player, position, direction)
                 break
             except ValueError as e:
                 print(e)
                 print("Please try again.")
+        if self.isTerminal():
+            print(f"Player {self.player} wins!")
+            return True
+        return False
+
+    def isTerminal(self):
+        x = self.lastPosition.x
+        y = self.lastPosition.y
+        if self.lastPosition is None:
+            return False
+        if self.isWinByLine():
+            self.result = 3 - self.player
+            return True
+        for x in range(self.size * 2 - 1):
+            if self.board[x][y] == 0:
+                return False
+        for y in range(self.size * 2 - 1):
+            if self.board[x][y] == 0:
+                return False
+        _min = min(x, y)
+        x -= _min
+        y -= _min
+        for i in range(self.size * 2 - 1):
+            if x >= self.size * 2 - 1 or y >= self.size * 2 - 1:
+                break
+            if self.board[x + i][y + i] == 0:
+                return False
+        return True
+
+    def isWinByLine(self):
+        # This function is written by ChatGPT. Cool!
+        if self.lastPosition is None:
+            return False
+        directions = [
+            Position(0, 1),
+            Position(1, -1),
+            Position(1, 0),
+            Position(1, 1),
+            Position(0, -1),
+            Position(-1, 1),
+        ]
+        for direction in directions:
+            count = 1
+            pos = self.lastPosition
+            while True:
+                pos = pos + direction
+                if (
+                    pos.x < 0
+                    or pos.y < 0
+                    or pos.x >= self.size * 2 - 1
+                    or pos.y >= self.size * 2 - 1
+                    or self.board[pos.x][pos.y] != self.player
+                ):
+                    break
+                count += 1
+            pos = self.lastPosition
+            while True:
+                pos = pos - direction
+                if (
+                    pos.x < 0
+                    or pos.y < 0
+                    or pos.x >= self.size * 2 - 1
+                    or pos.y >= self.size * 2 - 1
+                    or self.board[pos.x][pos.y] != self.player
+                ):
+                    break
+                count += 1
+            if count >= self.winLen:
+                return True
+        return False
 
     def __str__(self):
         result = f"Board size: {self.size}\n"
@@ -128,34 +219,28 @@ class Board:
             ):
                 assert self.board[x][y] != -1
                 if self.board[x][y] == 0:
-                    word = ". "
-                elif self.board[x][y] % 3 == 1 % 3:
-                    word = "/ "
-                elif self.board[x][y] % 3 == 2 % 3:
-                    word = "--"
-                elif self.board[x][y] % 3 == 3 % 3:
-                    word = "\ "
-
-                if self.board[x][y] == 0:
-                    backgroundColor = None
-                elif self.board[x][y] <= 3:
-                    backgroundColor = 196
-                else:
-                    backgroundColor = 33
+                    word = "."
+                elif self.board[x][y] == 1 or self.board[x][y] == 2:
+                    word = " "
+                if Position(x, y) == self.lastPosition:
+                    word = " /-\\"[self.lastDirection]
+                backgroundColor = [None, 196, 33][self.board[x][y]]
 
                 result += outputHelper.colorize(word, backgroundColor=backgroundColor)
-                result += "  "
+                result += "   "
             result += "\n"
+        result += f"last position: {self.lastPosition}\n"
         return result
 
 
 if __name__ == "__main__":
-    b = Board(5)
+    """b = Board(5)
     b.board[0][4] = 1  # player 1, direction 1
     b.board[4][6] = 5  # player 2, direction 2
     b.board[6][5] = 3  # player 1, direction 3
     # the moves are not valid, but it's just for testing
-    print(b)
-    b = Board(5)
+    print(b)"""
+    b = HexBoard(5, 4)
     while True:
-        b.getHumanInputAndPlay()
+        if b.getHumanInputAndPlay():
+            break
