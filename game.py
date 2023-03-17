@@ -168,16 +168,17 @@ class HexBoard:
         return True
 
     def isWinByLine(self):
+        checkPlayer = 3 - self.player
         # This function is written by ChatGPT. Cool!
         if self.lastPosition is None:
             return False
         directions = [
             Position(0, 1),
-            Position(1, -1),
             Position(1, 0),
             Position(1, 1),
             Position(0, -1),
-            Position(-1, 1),
+            Position(-1, 0),
+            Position(-1, -1),
         ]
         for direction in directions:
             count = 1
@@ -189,7 +190,7 @@ class HexBoard:
                     or pos.y < 0
                     or pos.x >= self.size * 2 - 1
                     or pos.y >= self.size * 2 - 1
-                    or self.board[pos.x][pos.y] != self.player
+                    or self.board[pos.x][pos.y] != checkPlayer
                 ):
                     break
                 count += 1
@@ -201,7 +202,7 @@ class HexBoard:
                     or pos.y < 0
                     or pos.x >= self.size * 2 - 1
                     or pos.y >= self.size * 2 - 1
-                    or self.board[pos.x][pos.y] != self.player
+                    or self.board[pos.x][pos.y] != checkPlayer
                 ):
                     break
                 count += 1
