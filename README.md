@@ -1,5 +1,6 @@
 # CoffeeAI
-嘗試解決 [Coffee](https://boardgamegeek.com/boardgame/94746/coffee)(2011發行的桌遊)
+嘗試解決 [Coffee](https://boardgamegeek.com/boardgame/94746/coffee)(2011發行的桌遊)  
+規則參考[nestorgames](https://www.nestorgames.com/rulebooks/COFFEE_EN.pdf)
 # 預計進度  
 * 實作遊戲<--現在在這  
 * 實作神經網路  

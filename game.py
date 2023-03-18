@@ -1,9 +1,20 @@
+from enum import Enum
+from typing import Tuple, Optional
+
+
+class Direction(Enum):
+    DOWN_LEFT = 1
+    RIGHT = 2
+    DOWN_RIGHT = 3
+
+
 class OutputHelper:
     BACKGROUND = "\x1b[48;5;"
     WORD = "\x1b[38;5;"
     END = "m"
     RESET = "\x1b[0m"
 
+    @staticmethod
     def colorize(self, text, wordColor=None, backgroundColor=None):
         result = ""
         if wordColor is not None:
@@ -27,7 +38,7 @@ class Position:
         return Position(self.x - other.x, self.y - other.y)
 
     def __eq__(self, other):
-        if other == None:
+        if other is None:
             return False
         return self.x == other.x and self.y == other.y
 
@@ -36,11 +47,11 @@ class Position:
             raise ValueError("Cannot get direction of same position")
         array = other - self
         if array.x != 0 and array.y == 0:
-            return 1
+            return Direction(1)
         elif array.x == 0 and array.y != 0:
-            return 2
+            return Direction(2)
         elif array.x == array.y:
-            return 3
+            return Direction(3)
         else:
             raise ValueError(
                 f"The two positions are not in the same line:{self} and {other}"
@@ -50,11 +61,8 @@ class Position:
         return f"({self.x}, {self.y})"
 
 
-outputHelper = OutputHelper()
-
-
 class HexBoard:
-    def __init__(self, size, winLen, board=None, initPlayer=1):
+    def __init__(self, size, winLen, board=None, initialPlayer=1):
         self.size = size  # length of each side of the board
         self.winLen = winLen  # number of pieces in a row to win
         self.board = board or self.createBoard()
@@ -63,14 +71,13 @@ class HexBoard:
         # 0: empty
         # 1: player 1
         # 2: player 2
-        self.player = initPlayer
+        self.player = initialPlayer
         self.lastPosition = None
         self.lastDirection = None
         self.result = None
 
-    def createBoard(
-        self,
-    ):  # a hex board in axial coordinates, marked with -1 if it's not a valid position.
+    def createBoard(self):
+        # Create a hex board in axial coordinates, marked with -1 if it's not a valid position.
         board = [[0] * (self.size * 2 - 1) for _ in range(self.size * 2 - 1)]
         for x in range(self.size * 2 - 1):
             for y in range(self.size * 2 - 1):
@@ -78,85 +85,134 @@ class HexBoard:
                     board[x][y] = -1
         return board
 
-    def isValid(self, position, direction):
-        # check position
-        if (
-            position.x > self.size * 2 - 1
-            or position.y > self.size * 2 - 1
-            or position.x < 0
-            or position.y < 0
+    def isValid(
+        self, position: Position, direction: Direction
+    ) -> Tuple[bool, Optional[str]]:
+        # Check if a move is valid.
+        # Check position
+        if not (
+            0 <= position.x < self.size * 2 - 1 and 0 <= position.y < self.size * 2 - 1
         ):
-            return False, "out of board"
+            return False, f"Position {position} out of range of board"
         if self.board[position.x][position.y] == -1:
-            return False, "out of board"
+            return False, f"Position {position} out of range of board"
         if self.board[position.x][position.y] > 0:
-            return False, "position occupied"
-        # check direction
-        if direction > 3 or direction < 1:
-            return False, "invalid direction"
-        if self.lastPosition is None:
-            return True, None
-        inSameLine = self.lastPosition.getDirection(position) == self.lastDirection
-        if not inSameLine:
-            return False, "not in the given direction"
+            return False, f"Position {position} occupied"
+        if not self.isThereNextMove(position):
+            return (
+                False,
+                f"Position {position} is illegal because the next player has no free spaces available.",
+            )
+        # Check if the position fits lastDirection
+        if (
+            self.lastPosition is not None
+            and self.lastPosition.getDirection(position) != self.lastDirection
+        ):
+            return False, "Move is not in the given direction"
         return True, None
 
-    def play(self, player, position, direction):
-        valid, errorMessage = self.isValid(position, direction)
+    def play(self, player: int, position: Position, direction: Direction):
+        if player != self.player:
+            raise ValueError(f"Player {player} is not the current player")
+        valid, errorMessage = self.isValid(position, direction.value)
         if not valid:
             raise ValueError(errorMessage)
-        if self.board[position.x][position.y] > 0:
-            raise ValueError(
-                f"Board:\n{self}\nPosition is {position} already occupied."
-            )
-        if self.board[position.x][position.y] == -1:
-            raise ValueError(f"Position {position} is invalid.")
-
         self.board[position.x][position.y] = player
         self.lastPosition = position
-        self.lastDirection = direction
+        self.lastDirection = direction.value
         self.player = 3 - self.player
-        return True
 
     def getHumanInputAndPlay(self):
         while True:
             try:
                 print(self)
-                x, y, direction = map(
-                    int, input("Position and direction(x y d): ").split()
-                )
+                x, y, d = map(int, input("Position and direction(x y d): ").split())
                 position = Position(x, y)
-                done = self.play(self.player, position, direction)
-                while not done:
-                    print("Invalid move, please try again.")
-                    x, y, direction = map(
-                        int, input("Position and direction(x y d): ").split()
-                    )
-                    position = Position(x, y)
-                    done = self.play(self.player, position, direction)
+                direction = Direction(d)
+                self.play(self.player, position, direction)
                 break
             except ValueError as e:
                 print(e)
                 print("Please try again.")
         if self.isTerminal():
-            print(f"Player {self.player} wins!")
+            print(f"Player {self.result} wins!")
+
+    def isThereNextMove(self, position: Position):
+        # Check if the next player has no free spaces available.
+        if self.lastDirection is None:
+            return False
+        freeSpace = self.findFreeSpace(
+            position, self.lastDirection, returnPositions=True
+        )
+        if len(freeSpace) >= 2:
             return True
+        if len(freeSpace) == 1:
+            position = freeSpace[0]
+            for d in Direction:
+                if self.findFreeSpace(position, d):
+                    return True
         return False
 
+    def findFreeSpace(self, position, direction, returnPositions=False):
+        result = []
+        if direction == Direction.DOWN_LEFT:
+            for x in range(
+                max(0, position.y - (self.size - 1)),
+                min(self.size * 2 - 1, position.y + self.size),
+            ):
+                if self.board[x][position.y] == 0:
+                    if returnPositions:
+                        result.append(Position(x, position.y))
+                    else:
+                        return True
+        elif direction == Direction.RIGHT:
+            for y in range(
+                max(0, position.x - (self.size - 1)),
+                min(self.size * 2 - 1, position.x + self.size),
+            ):
+                if self.board[position.x][y] == 0:
+                    if returnPositions:
+                        result.append(Position(position.x, y))
+                    else:
+                        return True
+        elif direction == Direction.DOWN_RIGHT:
+            # in direction (1,1)
+            x = position.x
+            y = position.y
+            _min = min(x, y)
+            x -= _min
+            y -= _min
+            for i in range(self.size * 2 - 1):
+                if x >= self.size * 2 - 1 or y >= self.size * 2 - 1:
+                    break
+                if self.board[x][y] == 0:
+                    if returnPositions:
+                        result.append(Position(x, y))
+                    else:
+                        return True
+                x += 1
+                y += 1
+        if returnPositions:
+            return result
+        else:
+            return False
+
     def isTerminal(self):
-        x = self.lastPosition.x
-        y = self.lastPosition.y
         if self.lastPosition is None:
             return False
         if self.isWinByLine():
+            # The last player wins
             self.result = 3 - self.player
             return True
+        # if the current player cannot move, the other player wins
         for x in range(self.size * 2 - 1):
-            if self.board[x][y] == 0:
+            if self.board[x][self.lastPosition.y] == 0:
                 return False
         for y in range(self.size * 2 - 1):
-            if self.board[x][y] == 0:
+            if self.board[self.lastPosition.x][y] == 0:
                 return False
+        x = self.lastPosition.x
+        y = self.lastPosition.y
         _min = min(x, y)
         x -= _min
         y -= _min
@@ -224,10 +280,10 @@ class HexBoard:
                 elif self.board[x][y] == 1 or self.board[x][y] == 2:
                     word = " "
                 if Position(x, y) == self.lastPosition:
-                    word = " /-\\"[self.lastDirection]
+                    word = " /-\\"[self.lastDirection.value]
                 backgroundColor = [None, 196, 33][self.board[x][y]]
 
-                result += outputHelper.colorize(word, backgroundColor=backgroundColor)
+                result += OutputHelper.colorize(word, backgroundColor=backgroundColor)
                 result += "   "
             result += "\n"
         result += f"last position: {self.lastPosition}\n"
